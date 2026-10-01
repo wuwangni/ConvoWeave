@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>ConvoWeave · UI 预览（手写版）</title>
+<link rel="stylesheet" href="../style.css" />
+<style>
+  :root {
+    --page-bg: #f4f1fb;
+    --page-text: #2b2b33;
+    --page-soft: #6b6b78;
+    --card: #ffffff;
+    --line: rgba(24,24,27,.08);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--page-bg);
+    color: var(--page-text);
+    font-family: "Inter", "PingFang SC", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 48px 32px 80px; }
+  h1 { font-size: 20px; margin: 0 0 6px; letter-spacing: -.01em; }
+  .sub { color: var(--page-soft); font-size: 13px; margin: 0 0 26px; }
+  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 26px; }
+  .toolbar button {
+    padding: 7px 13px; border-radius: 9px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--card); color: var(--page-text);
+    font: inherit; font-size: 12.5px;
+  }
+  .toolbar button:hover { border-color: #2f6bff66; color: #2f6bff; }
+  .msg { padding: 14px 16px; border-radius: 14px; margin: 0 0 12px; line-height: 1.7; font-size: 13.5px; }
+  .msg.user { background: var(--card); border: 1px solid var(--line); margin-left: 56px; }
+  .msg.ai { color: var(--page-soft); }
+  .msg code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px;
+    background: rgba(127,127,127,.14); padding: 1px 5px; border-radius: 5px; }
+  .tip-note {
+    margin-top: 34px; padding: 12px 14px; border-radius: 12px;
+    border: 1px dashed var(--line); color: var(--page-soft); font-size: 12.5px; line-height: 1.7;
+  }
+  .tip-note b { color: var(--page-text); }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>ConvoWeave · UI 预览（手写版）</h1>
+    <p class="sub">
+      这是插件的界面预览，<b>不依赖浏览器插件环境</b> —— 加载的是 <code>../sidebar.js</code> 与 <code>../style.css</code>
+      这两份<b>真文件</b>，所以这里看到的布局就是 ChatGPT 页面上的布局。
+      参考实现那边有一份同样的预览页（<code>E:\ChatNavigator\preview\preview.html</code>），可以并排对照。
+    </p>
+
+    <div class="toolbar">
+      <button id="btn-search">展开搜索框</button>
+      <button id="btn-collapse">收起为短横线列</button>
+      <button id="btn-index">显示 / 隐藏序号</button>
+      <button id="btn-append">模拟新提问</button>
+      <button id="btn-many">塞 30 条（看 9 根横线的上限）</button>
+      <button id="btn-walk">模拟滚动同步</button>
+    </div>
+
+    <div id="feed">
+      <div class="msg user">命令哪里有问题</div>
+      <div class="msg ai">你贴的命令里 <code>cd</code> 后面多了一个空格，所以路径被截断了……</div>
+      <div class="msg user">对啊我是要切换到D盘，命令是什么</div>
+      <div class="msg ai">直接输入 <code>D:</code> 回车即可，注意冒号不能省。</div>
+      <div class="msg user">cd命令怎么用</div>
+      <div class="msg ai">cd 是 change directory 的缩写……</div>
+      <div class="msg user">怎么在文件夹里打开cmd</div>
+      <div class="msg ai">在资源管理器地址栏直接输入 <code>cmd</code> 回车。</div>
+      <div class="msg user">Traceback (most recent call last): File "pdf2zh_next.py", line 88, in convert</div>
+      <div class="msg ai">这是 pdf2zh_next 在解析加密 PDF 时抛出的异常……</div>
+      <div class="msg user">ERROR ERROR:pdf2zh_next 处理 PDF 时崩溃了，怎么解决</div>
+      <div class="msg ai">先确认 PDF 是否加密，再检查字体子集……</div>
+    </div>
+
+    <div class="tip-note">
+      <b>怎么玩：</b><br />
+      1）点「展开搜索框」，在里面打字 —— 列表<b>边打边过滤</b>（不用回车）；打 <code>cmd</code> 试试，
+         你会看到序号跟着重排，但点下去跳转的仍是原来那一条（第 9 章最容易出 bug 的地方）。<br />
+      2）点「收起为短横线列」—— 卡片缩成右边一列横线（**最多 9 根，超出部分裁掉**）；
+         整张卡片是**页面竖直居中**的。鼠标<b>扫过那一列</b>，卡片会从左边展开，移开约 0.2 秒再收回。<br />
+      3）鼠标停在<b>被截断的</b>条目上 —— 左侧浮出完整提问原文。<br />
+      4）点「塞 30 条」再看那一列横线：**仍然只有 9 根**，间距和 9 条时一模一样
+         （行高按"最多 9 条"来分，限幅在 8~44px）。这是收起态"别挡着内容"的底线。
+    </div>
+  </div>
+
+  <script src="../summarizer.js"></script>
+  <script src="../history.js"></script>
+  <script src="../sidebar.js"></script>
+  <script>
+    // 错误条：任何 JS 报错都直接怼在页面底部，免得"看起来没问题其实早炸了"
+    window.__ERRORS__ = [];
+    window.addEventListener("error", function (e) {
+      window.__ERRORS__.push(e.message);
+      var b = document.getElementById("errbar");
+      if (!b) {
+        b = document.createElement("div");
+        b.id = "errbar";
+        b.style.cssText = "position:fixed;left:0;bottom:0;right:0;padding:10px 14px;" +
+          "background:#ef4444;color:#fff;font:12px/1.5 monospace;z-index:99999";
+        document.body.appendChild(b);
+      }
+      b.textContent = "JS ERROR: " + window.__ERRORS__.join(" | ");
+    });
+  </script>
+  <script>
+    (function () {
+      var SAMPLE = [
+        "命令哪里有问题",
+        "对啊我是要切换到D盘，命令是什么",
+        "cd命令怎么用",
+        "怎么在文件夹里打开cmd",
+        'Traceback (most recent call last): File "pdf2zh_next.py", line 88, in convert',
+        "ERROR ERROR:pdf2zh_next 处理 PDF 时崩溃了，怎么解决"
+      ];
+
+      var items = [];
+      var activeIndex = 0;
+      var lastJump = null;
+
+      // ⚠️ 这里刻意**不用** Decorator：面板的契约是"任何 { text } 数组都行"，
+      //    只给 text 它就只显示 text（第 3 章定的兜底）。预览页要验的正是这条兜底。
+      function rebuild() {
+        items = SAMPLE.map(function (raw, i) {
+          return {
+            key: "k" + i,
+            text: raw,
+            // title / tooltip 是"有就用、没有就退回 text"的可选字段（第 8 章的产物）。
+            // 预览页手工造一份，好让"悬停浮出全文"能演示（没有 tooltip 时它会退回 text）。
+            title: raw.length > 26 ? raw.slice(0, 25) + "…" : raw,
+            tooltip: raw
+          };
+        });
+        CW_Sidebar.setItems(items);
+        CW_Sidebar.setActive(activeIndex, true);
+      }
+
+      // ★ 手写版的 mount 只有一个参数（回调表）；"设置"是第 11 章才有的东西。
+      CW_Sidebar.mount({
+        onJump: function (index, key) {
+          lastJump = { index: index, key: key };
+          activeIndex = index;
+          CW_Sidebar.setActive(index, true);
+          document.title = "点了 index=" + index + " key=" + key;
+        },
+        onCollapse: function () {},
+        onQuery: function () {}
+      });
+      rebuild();
+
+      document.getElementById("btn-search").addEventListener("click", function () {
+        CW_Sidebar.toggleSearch();
+      });
+      document.getElementById("btn-collapse").addEventListener("click", function () {
+        CW_Sidebar.setCollapsed(!CW_Sidebar.isCollapsed());
+      });
+      document.getElementById("btn-index").addEventListener("click", function () {
+        var root = document.getElementById("cw-root");
+        root.classList.toggle("cw-show-index");
+      });
+      document.getElementById("btn-append").addEventListener("click", function () {
+        SAMPLE.push("帮我对比一下 RRT 和 A* 在无人艇路径规划里的优缺点");
+        rebuild();
+      });
+      document.getElementById("btn-many").addEventListener("click", function () {
+        for (var i = 0; i < 30; i++) SAMPLE.push("压力测试第 " + (i + 1) + " 条：这是一句足够长的提问，用来把标题撑到需要截断");
+        rebuild();
+      });
+      document.getElementById("btn-walk").addEventListener("click", function () {
+        activeIndex = (activeIndex + 1) % Math.max(1, items.length);
+        CW_Sidebar.setActive(activeIndex);
+      });
+
+      window.__LAST_JUMP__ = function () { return lastJump; };
+      window.__PREVIEW__ = { rebuild: rebuild, sample: SAMPLE };
+    })();
+  </script>
+</body>
+</html>

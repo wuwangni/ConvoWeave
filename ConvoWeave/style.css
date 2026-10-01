@@ -1,0 +1,784 @@
+/* ============================================================================
+   ConvoWeave —— UI 样式（第 3 章建基线；第 5、7、9、10、13 章各自追加了一段）
+
+   风格基线：白色半透明磨砂卡片 + 文字右对齐 + 右侧短横指示。
+   所有选择器统一以 #cw-root 开头做命名空间隔离，绝不污染 ChatGPT 自身样式。
+
+   阅读顺序（就是文件从上到下的顺序）：
+     1.  设计变量      —— 颜色/尺寸集中放，改一处全变
+     2.  防御性重置    —— 挡住 ChatGPT 的 Tailwind reset
+     3.  卡片主体      —— .cw-panel
+     4.  顶部标题栏    —— .cw-header / .cw-title / .cw-count
+     4·B 标题栏按钮    —— .cw-actions / .cw-btn            （第 9、10 章）
+     4·C 搜索框        —— .cw-search / .cw-input / .cw-clear（第 9 章）
+     4·D 回到刚才栏    —— .cw-backbar / .cw-back            （第 13 章）
+     5.  列表容器      —— .cw-list
+     6.  条目          —— .cw-item / __idx / __text / __mark
+     7.  脉冲高亮环    —— .cw-flash-ring（**不带 #cw-root 前缀**）
+     7·B 片段高亮      —— .cw-flash-frag（**同样不带前缀**） （第 13 章）
+     8.  当前项        —— .cw-item.is-active               （第 7 章）
+     9.  搜索过滤      —— .is-hidden / .cw-empty            （第 9 章）
+     10. 收起态横线列  —— .cw-collapsed 一整段               （第 10 章）
+     11. 悬停浮出全文  —— .cw-tip                           （第 10 章）
+   ============================================================================ */
+
+/* ---------- 1. 设计变量（定义在 #cw-root 上，不会泄漏到页面别处） ---------- */
+#cw-root {
+  --cw-accent: #2f6bff;
+  --cw-text: #52525b;
+  --cw-text-strong: #18181b;
+  --cw-muted: #a1a1aa;
+  --cw-mark: #d6d6dd;
+  --cw-hover: rgba(24, 24, 27, 0.055);
+
+  --cw-radius: 18px;
+  --cw-radius-sm: 12px;
+  --cw-width: 300px;
+
+  /* ★ 第 10 章：收起态的宽度 —— 就是那一列横线的宽度。
+     46 = 左右内边距 9+9 + 横线 14 + 一点余量（悬停时鼠标必须能停在这一列上）。 */
+  --cw-rail-w: 46px;
+
+  /* ★ 第 9、10 章新增的两个颜色。
+     和 --cw-hover 一样是"很轻的一层"，只是用途不同：
+       --cw-input-bg  搜索框的底（输入框必须有个"凹下去"的容器感）
+       --cw-border    ✕ 按钮的圆底、以及以后要用的分隔线 */
+  --cw-input-bg: rgba(24, 24, 27, 0.045);
+  --cw-border: rgba(24, 24, 27, 0.08);
+
+  /* ---------- 一屏看几条（第 8.5 章）----------
+     ★ 这两个数一起决定"面板能一次看到几个提问"。
+
+     --cw-row-h 是**量出来的**，不是估的（2026-09-28 实测 33px + 行距 1px）：
+         .cw-item 内边距 7px×2 = 14
+       + .cw-item__text 行高 13px × 1.45 ≈ 19
+       + .cw-item + .cw-item 的 margin-top 1
+       = 34
+     ⚠️ 改了字号、行高、条目内边距里任何一项，这个数**必须重新量** ——
+        量错的表现是"第 9 条被切掉一半"（而且看起来完全不像样式 bug）。
+        探针 p72 就是钉住这件事的：它会真的去数"完整可见的条目有几条"。
+
+     ⚠️ 为什么不用 JS 量一次行高再写回来：CSS 里放不下"内容的实测高度"，
+        但这一处的输入（字号/内边距）本来就是我们自己写死的，量的收益很小，
+        而 JS 方案要处理"什么时候重量"（字体晚到、缩放、改窗口）——亏。 */
+  --cw-rows: 9;
+  --cw-row-h: 34px;
+
+  /* 条目区的下内边距（给最后一条留一点呼吸）。
+     ⚠️ 它必须**参与**高度计算：clientHeight 是含内边距的，
+        漏掉这 8px 的后果就是"第 9 条被切掉一截"（实测第一版就栽在这里：
+        9 条总高 305，而真正能用的内容高度只有 306 - 8 = 298 → 只完整看到 8 条）。 */
+  --cw-list-pad: 8px;
+
+  --cw-list-h: calc(var(--cw-row-h) * var(--cw-rows) + var(--cw-list-pad));   /* = 9 条 + 内边距 */
+
+  /* 面板总高的**视口守卫**：别顶到屏幕外面去。
+     它和 --cw-list-h 是两个不同的角色，都要留：
+       --cw-list-h 管"一次看到几条"（功能）
+       --cw-max-h  管"任何视口下都不越界"（安全）
+     小窗口时后者更小、先起作用 → 自动少显示两条，而不是溢出屏幕。
+
+     ⚠️ 2026-09-28：面板改成**竖直居中**之后，这 112px 变成了"上下各留 56px"
+        （以前是"顶部固定 96px + 底部留 16px"）。数值没变，含义变了。 */
+  --cw-max-h: calc(100vh - 112px);
+
+  position: fixed;
+  z-index: 2147483000;
+  /* ★ 2026-09-28：原来是 `top: 96px`（贴右上角）。改成**页面竖直居中** ——
+     收起态那一列横线、和展开态的整张卡片，都落在屏幕的竖直中线上。
+     注意真正做居中的是下面 .cw-panel 的 translateY(-50%)：
+        top: 50% 只把**容器**的顶边放到中线，
+        translateY(-50%) 再把面板自己往上提半个身高 → 面板的**中点**落在中线上。
+     ⚠️ 这个 transform 必须写在 .cw-panel 上，**绝不能写在 #cw-root 上**：
+        #cw-root 上加 transform 会给它内部的 position:fixed 元素（那个悬停气泡）
+        换一套定位基准，气泡坐标全算错（就是第 3 章"绝不加 contain"那条铁律的同一个坑）。 */
+  top: 50%;
+  right: 18px;
+
+  font-family: "Inter", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--cw-text);
+  direction: ltr;
+  text-align: left;
+  -webkit-font-smoothing: antialiased;
+
+  /* ⚠️ 这里绝对不能加 contain（尤其是 contain: layout）。
+     它会把本元素变成 fixed 子元素的新的定位基准，
+     第 10 章悬停浮出的全文气泡坐标就会算错（跑到屏幕外面去）。 */
+}
+
+/* ---------- 2. 防御性重置（挡住 ChatGPT 的 Tailwind reset） ---------- */
+#cw-root,
+#cw-root *,
+#cw-root *::before,
+#cw-root *::after {
+  box-sizing: border-box;
+}
+
+/* ---------- 3. 卡片主体 ---------- */
+#cw-root .cw-panel {
+  display: flex;
+  flex-direction: column;
+  width: var(--cw-width);
+  max-height: var(--cw-max-h);
+  overflow: hidden;
+
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  border-radius: var(--cw-radius);
+  box-shadow: 0 20px 44px -14px rgba(15, 23, 42, 0.34),
+              0 2px 8px rgba(15, 23, 42, 0.06);
+
+  backdrop-filter: blur(20px) saturate(1.7);
+  -webkit-backdrop-filter: blur(20px) saturate(1.7);
+
+  /* ★ 2026-09-28：竖直居中。配合 #cw-root 的 top:50% 一起读（见那段注释）。 */
+  transform: translateY(-50%);
+
+  /* ★ 第 10 章：宽度的过渡。
+     这一行是"收窄成 46px"这个方案**成立的前提** ——
+     正因为收起态和展开态是同一块面板、只是宽度在变，
+     那条过渡才能让卡片看起来是"被压扁"而不是"消失后又冒出来一颗球"。
+     ⚠️ 副作用（探针踩过）：过渡期间 `getBoundingClientRect().width` 读到的是**中间值**，
+        所以任何"切完状态立刻量尺寸 / 立刻算鼠标坐标"的代码都会读到旧值。
+        判据和第 8.5 章"落位是异步的"完全同源：**量之前先等动画停。** */
+  transition: width 0.24s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/* ---------- 4. 顶部标题栏 ---------- */
+#cw-root .cw-header {
+  flex: 0 0 auto;            /* 不参与伸缩、不被压缩：头部永远在 */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 12px 8px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#cw-root .cw-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--cw-text-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#cw-root .cw-count {
+  flex: 0 0 auto;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  display: inline-grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--cw-accent);
+  background: rgba(47, 107, 255, 0.12);
+}
+
+/* ---------- 4·B · 标题栏右侧的两个按钮（第 9、10 章） ---------- */
+#cw-root .cw-actions {
+  flex: 0 0 auto;              /* 两个按钮永远不被压缩 */
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+#cw-root .cw-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  color: var(--cw-muted);
+  /* ⚠️ 从 0 开始写 transition：图标是 stroke="currentColor" 的内联 SVG，
+     颜色和背景都靠这一层过渡才不生硬。transform 那条是给 :active 的"按下去"用的。 */
+  transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+#cw-root .cw-btn svg { width: 14px; height: 14px; display: block; }
+#cw-root .cw-btn:hover { background: var(--cw-hover); color: var(--cw-text-strong); }
+#cw-root .cw-btn:active { transform: scale(0.93); }
+/* 搜索框正开着时，那个放大镜按钮保持"点亮" —— 否则用户不知道搜索框是哪来的 */
+#cw-root .cw-btn.is-on { background: rgba(47, 107, 255, 0.12); color: var(--cw-accent); }
+
+/* ---------- 4·C · 搜索框（第 9 章） ---------- */
+
+/* ★ 常驻 DOM，靠 max-height 从 0 滑出来。
+   ⚠️ 为什么用 `max-height: 0` 而不是 `display: none`：
+      display:none 的元素**不能做过渡**（它在布局里根本不存在，没有"中间态"），
+      会变成"啪"地出现。max-height 从 0 长到 48px 才有那一段滑出动画。
+      （这也是 max-height 过渡的经典用法：给一个**略大于实际高度**的上限即可，
+        不必精确 —— 只是动画时长会随上限长短略有变化。） */
+#cw-root .cw-search-wrap {
+  flex: 0 0 auto;
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  padding: 0 10px;
+  transition: max-height 0.2s ease, opacity 0.18s ease, padding-bottom 0.2s ease;
+}
+#cw-root.cw-search-open .cw-search-wrap {
+  max-height: 48px;
+  opacity: 1;
+  padding-bottom: 8px;
+}
+
+#cw-root .cw-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 999px;         /* 胶囊形：和卡片的方角形成对比，一眼看出"这是输入框" */
+  background: var(--cw-input-bg);
+}
+#cw-root .cw-search > svg {
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+  color: var(--cw-muted);
+}
+#cw-root .cw-input {
+  flex: 1 1 auto;
+  min-width: 0;                 /* 和 .cw-item__text 同一个道理：不写就会撑破父容器 */
+  font-family: inherit;         /* ⚠️ 必须写：input 不继承 font-family，默认是系统等宽/怪字体 */
+  font-size: 12.5px;
+  color: var(--cw-text-strong);
+  background: transparent;
+  border: 0;
+  outline: none;                /* 焦点圈交给下面 :focus 的规则，别用浏览器默认那个蓝框 */
+}
+#cw-root .cw-input::placeholder { color: var(--cw-muted); }
+
+/* ✕ 只在输入框里有内容时出现 —— 空着的时候放一个"清空"，点它什么也不会发生 */
+#cw-root .cw-clear {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: none;
+  place-items: center;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--cw-muted);
+  background: var(--cw-border);
+}
+#cw-root .cw-search.has-value .cw-clear { display: grid; }
+
+/* ---------- 4·D · 「回到刚才」栏（第 13 章） ----------
+   只在"当前项是子提问、且父提问在目录里"时展开（.is-on）。
+
+   ★ 为什么用 `max-height` 过渡、而不是 `display:none`：
+     和搜索框同一个理由 —— 要让"出现/消失"是**看得见的一小段动画**，
+     而不是"啪一下冒出来"。display 不能过渡；max-height 可以。
+     `overflow:hidden` 是配套的：过渡期间内容会超出，必须裁掉。
+   ⚠️ max-height 只要给得比真实高度略大即可（58px > 28+6+副标题一行）；
+      给太大（比如 500px）会让过渡"前快后慢"，看着像卡住。 */
+#cw-root .cw-backbar {
+  flex: 0 0 auto;
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  padding: 0 10px;
+  transition: max-height 0.2s ease, opacity 0.16s ease, padding-bottom 0.2s ease;
+}
+#cw-root .cw-backbar.is-on {
+  max-height: 58px;
+  opacity: 1;
+  padding-bottom: 6px;
+}
+
+/* 按钮本身：一颗**胶囊**（不是方块）—— 胶囊读起来像"动作"，方块像"标签页" */
+#cw-root .cw-back {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--cw-accent);
+  background: rgba(47, 107, 255, 0.12);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+#cw-root .cw-back:hover { background: var(--cw-hover); }
+#cw-root .cw-back:active { transform: scale(0.985); }
+
+/* 箭头在悬停时往左挪 2px —— 一个"要往回走"的微提示，成本几乎为零 */
+#cw-root .cw-back__arrow {
+  flex: 0 0 auto;
+  font-size: 13px;
+  line-height: 1;
+  transition: transform 0.16s ease;
+}
+#cw-root .cw-back:hover .cw-back__arrow { transform: translateX(-2px); }
+#cw-root .cw-back__label { flex: 0 0 auto; }
+
+/* 副标题 = "父提问：xxx"。单行 + 省略号 —— 父提问标题可能很长，
+   绝不能让它把这一栏撑成两行（栏高是写死的 58px，撑破就被裁） */
+#cw-root .cw-back__sub {
+  margin: 4px 2px 0;
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--cw-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- 5. 列表容器 ---------- */
+#cw-root .cw-list {
+  flex: 1 1 auto;
+  /* ⚠️ min-height: 0 是 flex 子元素能滚动的隐形前提。
+     flex 项默认 min-height:auto，不会缩到比内容还小 ——
+     少了这行，条目多了会把整张卡片往下撑高，而不是列表自己滚。 */
+  min-height: 0;
+
+  /* ★ 第 8.5 章：一屏恰好放 --cw-rows 条。
+     ⚠️ 第 10 章把这条**整条挪到了下面**那个 `:not(.cw-collapsed)` 规则里。
+        在这里留一份"兜底"是不行的 —— `.cw-list` 这个选择器收起态也匹配，
+        于是它会把 `--cw-list-h` 又一次压到那一列横线上，白挪。
+        判据：**"分形态的规则"和"通用规则"不能写同一个属性**，
+              否则通用的那条永远在兜底、分形态的那条形同虚设。 */
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0 8px var(--cw-list-pad);
+}
+
+/* ★ 第 8.5 章 + 第 10 章：**只有展开态**才限制列表高度。
+   ① `--cw-list-h` = 9 条的高度，管"一次看到几条"；
+   ② `100vh - 170px` 是小窗口的第二道守卫（header + 外边距大概吃掉 170px）。
+   ⚠️ 为什么必须限定 :not(.cw-collapsed)：
+      收起态那一列横线的长度靠"能放多少放多少"（一条只有 8~44px），
+      套上"9 条的高度"会把那一列凭空砍短，条数一多就只剩几根，鼠标往下扫就断了。
+   判据：**同一个选择器在两种形态下语义不同时，规则必须限定形态。** */
+#cw-root:not(.cw-collapsed) .cw-list {
+  max-height: min(var(--cw-list-h), calc(100vh - 170px));
+}
+
+/* ---------- 6. 条目 ---------- */
+#cw-root .cw-item {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;   /* 内容整体靠右 —— "目录感"的来源 */
+  gap: 9px;
+  padding: 7px 8px 7px 12px;
+  border-radius: var(--cw-radius-sm);
+  cursor: pointer;
+}
+#cw-root .cw-item + .cw-item { margin-top: 1px; }
+
+/* ★ 第 9 章：序号标签。
+   默认**不显示** —— 第 3 章定下的观感是"纯文字右对齐"，加一排数字会毁掉它。
+   需要的时候给 #cw-root 加上 .cw-show-index 就露出来（演示用；也是"序号重排"那件事的载体）。*/
+#cw-root .cw-item__idx {
+  flex: 0 0 auto;
+  min-width: 15px;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;   /* 数字等宽：1 和 8 占一样宽，序号才不会左右抖 */
+  color: var(--cw-muted);
+  text-align: left;
+}
+#cw-root:not(.cw-show-index) .cw-item__idx { display: none; }
+
+#cw-root .cw-item__text {
+  flex: 1 1 auto;
+  /* ⚠️ min-width: 0 是单行截断（ellipsis）的隐形前提。
+     flex 项默认 min-width:auto = 不小于内容宽度，
+     少了这行，长文本会直接溢出卡片，而不是变成 "…"。 */
+  min-width: 0;
+  text-align: right;
+  white-space: nowrap;         /* 单行截断三件套之一 */
+  overflow: hidden;            /* 之二 */
+  text-overflow: ellipsis;     /* 之三 */
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--cw-text);
+}
+
+#cw-root .cw-item__mark {
+  flex: 0 0 auto;              /* 不许被压缩：那根横线必须始终 14×2 */
+  width: 14px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--cw-mark);
+}
+
+/* ★ 第 11 章：子提问（选中文字继续提问）的层级 —— Word 导航窗格式（2026-09-28 二改，
+   用户反馈"要变成图片中大小层次分明的形式"）：
+   · 主项 = 大标题：加粗 600、字号 13.5px；
+   · 子项 = 小标题：字号 12px、缩进 30→40px；
+   · 组间距**只加在「子项 → 主项」的过渡上**（一组结束、下一组开始）——
+     不能给所有主项加：全主项列表的行高必须保持均匀，"一屏九条"的契约（p73 E 段）
+     建立在"行高一致"上，见 p73 的教训；
+   · **不编号、不加背景框** —— 第 10 章"去方框"的教训：小尺寸下框会变成噪点。
+   ⚠️ 主项的加粗是**静态层级**（恒定身份），与第 5 章"当前项绝不动 font-weight"
+      不冲突 —— 那条管的是"随 hover/选中状态变化"，这条是"永远是谁大谁小"。
+   ⚠️ 组间距规则在收起态被后面 `margin-top: 0` 覆盖（收起态行距由 --cw-rail-row 管）。 */
+#cw-root .cw-item:not(.cw-item--child) .cw-item__text {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+#cw-root .cw-item--child + .cw-item:not(.cw-item--child) { margin-top: 6px; }
+#cw-root .cw-item--child {
+  padding-left: 40px;
+}
+/* ★ 2026-09-28：追问链（在子提问的回答里再选中）可以很深 —— 每级多缩 14px，
+   第 3 级起封顶（68px），再深也不继续往里挤，否则标题没地方写字。
+   判据：**层级如实反映数据，视觉只做"封顶"这一种取舍。** */
+#cw-root .cw-item--d2 { padding-left: 54px; }
+#cw-root .cw-item--d3 { padding-left: 68px; }
+#cw-root .cw-item--child .cw-item__text {
+  font-size: 12px;
+}
+#cw-root .cw-item--child .cw-item__idx { display: none; }
+
+/* 悬停反馈：淡底 + 横线略深，两处就够 —— 文字颜色**不动**。
+
+   ⚠️ 这一段是 2026-09-28 按用户实测反馈改掉的。
+      旧版三处一起给：整行淡底 + 文字改成 --cw-text-strong(#18181b 近黑) + 横线加深。
+      用户看到的实际观感是「**鼠标悬浮的时候变成黑色加粗**」——
+      #18181b 压在浅灰底上，对比度一下子拉满，视觉上就像字被加粗了，
+      而且它跟"当前正在阅读的那一条"用的蓝色**是两套语言**，
+      同一块面板里同时出现黑、蓝两个强调色，互相打架。
+
+      判据（以后改任何 hover 都照这条自查）：
+        **hover 是"指得到"，不是"重要"。**
+        "指得到"只需要很轻的信号（背景），
+        "重要"才配用强调色（蓝色）。两者别混用。 */
+#cw-root .cw-item:hover { background: var(--cw-hover); }
+#cw-root .cw-item:hover .cw-item__mark { background: var(--cw-muted); }
+
+/* ============================================================================
+   7. 脉冲高亮环（第 5 章）
+   ★★ 2026-09-28 性能返工：环从「挂进页面气泡」改成「body 上的 fixed 覆盖层」。
+
+   ⚠️ 注意这一段的**选择器不带 #cw-root 前缀** —— 它挂不到我们的面板里，
+      而是直接挂在 <body> 上（CW_Parser.flash），所以不能参与命名空间。
+      正因如此，这里的颜色**只能写死**：
+      --cw-accent 是定义在 #cw-root 上的，环不在 #cw-root 里，取不到那个变量。
+
+   为什么改挂法（实测，tools/probes/p68-insert-cost.js）：
+     插进页面气泡 → 插完到下一帧要等 76.1ms
+     插进 body    → 4.1ms
+     因为气泡埋在 74000px 高的虚拟滚动容器第 39 层，往它身上插节点会让整篇文档重排。
+     顺带的好处：位置由 JS 用 transform 写，环不再需要 inset / border-radius:inherit，
+     也不可能改动页面任何一个字节。
+   ============================================================================ */
+
+.cw-flash-ring {
+  position: fixed;                /* 相对视口；位置完全由 JS 的 transform 决定 */
+  top: 0;
+  left: 0;
+  box-sizing: border-box;         /* 2px 边框画在矩形内侧（对齐旧版 inset:0 的观感） */
+  width: 0;                       /* 真实尺寸由 JS 按气泡矩形写入 */
+  height: 0;
+  border: 2px solid #3b82f6;
+  background: rgba(59, 130, 246, 0.16);
+  opacity: 0;
+  pointer-events: none;           /* ★ 不抢鼠标：高亮期间照样能选中文字 */
+  /* ★ z-index 比 #cw-root(2147483000) 低 1：环永远在面板**下面**。
+     这样面板不会挡住环，环也不会盖在面板上（第 4 章挂账的面板遮挡问题不受影响）。*/
+  z-index: 2147482999;
+  will-change: transform, opacity;
+  /* ★ 淡入 0.08s、淡出 0.22s —— 分开设置。
+     0.22s 的淡入会让"点了之后高亮半天不亮"，它跟点击本身的阻塞叠在一起
+     就是用户说的"响应慢"。进入要干脆，离场可以温柔。*/
+  transition: opacity 0.08s ease-out;
+}
+
+.cw-flash-ring--on { opacity: 1; }                                  /* 淡入（下一帧才加，否则过渡不播） */
+.cw-flash-ring--out { opacity: 0; transition: opacity 0.22s ease; }  /* 淡出（写在后面，覆盖上面的时长） */
+
+/* ============================================================================
+   7·B. 片段高亮（第 13 章）—— 一段文字的高亮，**一组**小盒子
+
+   ★ 为什么是一组、不是一圈：
+     "环"（上一节）圈的是**一个元素**，一个矩形就够了。
+     而"一段文字"在屏幕上会断成好几个矩形 —— 跨行断一次，跨表格单元格再断几次。
+     所以这里是一个矩形一个盒子（盒子数由 JS 按 range.getClientRects() 现算）。
+
+   ★ 为什么**不带 #cw-root 前缀**（和上面的环一样）：
+     它挂在 <body> 上，是页面的兄弟节点，不在卡片的 DOM 子树里。
+     带上 #cw-root 选择器就永远匹配不上 —— 这是"覆盖层必须挂 body"的必然结果。
+
+   ⚠️ 与"环"同层（z-index 一致）：都必须在面板下面，否则会盖住用户的面板。
+     两者**互斥**由 JS 保证（flash() 里那句 flashCleanup）。
+   ============================================================================ */
+.cw-flash-frag {
+  position: fixed;
+  top: 0;
+  left: 0;
+  box-sizing: border-box;
+  width: 0;
+  height: 0;
+  border-radius: 3px;                  /* 一个圆角小色块，不是锐角方块 */
+  background: rgba(47, 107, 255, 0);
+  box-shadow: 0 0 0 1px rgba(47, 107, 255, 0);
+  pointer-events: none;                /* 绝不吃鼠标事件：它盖在正文上 */
+  opacity: 0;
+  z-index: 2147482999;                 /* 与高亮环同层：永远在面板下面 */
+  will-change: transform, opacity;
+  transition: opacity 0.1s ease-out, background 0.1s ease-out,
+    box-shadow 0.1s ease-out;
+}
+.cw-flash-frag--on {
+  opacity: 1;
+  background: rgba(47, 107, 255, 0.2);
+  box-shadow: 0 0 0 1px rgba(47, 107, 255, 0.45);
+  animation: cw-frag-pulse 1.6s ease-out;   /* 一亮 → 缓下来，像"呼吸一下" */
+}
+.cw-flash-frag--out { opacity: 0; transition: opacity 0.36s ease; }
+
+@keyframes cw-frag-pulse {
+  0%   { background: rgba(47, 107, 255, 0.44); }
+  60%  { background: rgba(47, 107, 255, 0.2); }
+  100% { background: rgba(47, 107, 255, 0.2); }
+}
+/* ⚠️ 这个覆盖层不在 #cw-root 里，享受不到下面那条全局的 reduced-motion 规则，单独写一条 */
+@media (prefers-reduced-motion: reduce) {
+  .cw-flash-frag--on { animation: none; }
+  .cw-flash-frag { transition-duration: 0.001ms; }
+}
+
+/* ============================================================================
+   8. 当前项（第 7 章 · 滚动同步）
+
+   ⚠️ 这一段的全部纪律只有一句：**只用颜色区分，绝不动 font-weight / 宽高**。
+
+   为什么（第 3 章 hover 返工的实测教训）：
+     条目是 [ flex:1 的文字区 ] + [ 14×2 的横线 ] 拼出来的。
+        · 把文字 fontWeight 从 400 提到 600 → 字变宽 → 文字区被重新分配 → 整行文字左右跳
+        · 把横线从 14×2 改成 17×3 → 横线变宽 → 文字区又窄 3px → 又在跳
+     而"当前项"是**跟着滚动实时切换**的：跳一次看不出来，滚动时每换一条跳一次，
+     整张列表看起来就是"在左右抖"。
+     醒目感改用 **box-shadow 发光** —— 它不参与布局，爱加多亮加多亮，谁也挤不着。
+
+   ⚠️ 为什么不给 .cw-item.is-active 也写一条 :hover：
+     它的特异性（#cw-root + 两个 class）天然高于 `.cw-item:hover`，
+     所以悬停在当前项上时**背景仍然是那一抹蓝**，不会串成灰色。这是想要的效果：
+     当前项的蓝是"你在读这里"，不该被"指得到"的灰盖掉。
+   ============================================================================ */
+
+#cw-root .cw-item.is-active {
+  background: rgba(47, 107, 255, 0.10);
+  box-shadow: inset 0 0 0 1px rgba(47, 107, 255, 0.18);
+}
+
+#cw-root .cw-item.is-active .cw-item__text {
+  color: var(--cw-accent);
+}
+
+#cw-root .cw-item.is-active .cw-item__mark {
+  background: var(--cw-accent);
+  box-shadow: 0 0 0 3px rgba(47, 107, 255, 0.14);
+}
+
+/* ============================================================================
+   9. 搜索过滤（第 9 章）
+
+   ★ 这一条是整章的支点：**过滤 = 加一个 class，不是删 DOM。**
+     删了重建的话，"每敲一个字重建一遍列表"会带来两个问题：
+       ① 慢 —— 13 行 × 每键一次，节点创建 + 插入 + 全量布局；
+       ② **焦点会丢** —— 输入框虽然不在列表里，但列表重建引起的重排
+          可能让浏览器把焦点重置掉，表现为"打第二个字就不进去了"。
+     判据：**高频交互只改"值"，不改"结构"。**
+   ============================================================================ */
+#cw-root .cw-item.is-hidden { display: none; }
+
+/* 空状态：正常占位（不 display:none），靠 .is-on 显形。
+   面板在 0 条时也得有内容撑一点高度，不然卡片会缩成一条缝。 */
+#cw-root .cw-empty {
+  display: none;
+  padding: 14px 14px 18px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--cw-muted);
+}
+#cw-root .cw-empty.is-on { display: block; }
+#cw-root .cw-empty b {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--cw-text);
+  font-weight: 600;
+}
+
+/* ---------- 6.5 过渡期"加载中"占位（第 8.5 章补，2026-09-30） ----------
+   切会话时面板要空 2~5 秒（正确答案在接口那边），空着像坏了 → 给一句明确的等待反馈。
+   三条"呼吸"的骨架横线 + 一行说明。
+   ⚠️ 与 .cw-empty 互斥（同时出现会自相矛盾）—— 互斥由 sidebar.js 的 setLoading 保证。 */
+#cw-root .cw-loading { display: none; padding: 14px 14px 18px; }
+#cw-root .cw-loading.is-on { display: block; }
+#cw-root .cw-loading__sk {
+  display: block;
+  height: 9px;
+  border-radius: 5px;
+  background: linear-gradient(90deg,
+      var(--cw-input-bg) 25%, var(--cw-hover) 37%, var(--cw-input-bg) 63%);
+  background-size: 400% 100%;
+  animation: cw-shimmer 1.15s ease-in-out infinite;
+}
+#cw-root .cw-loading__sk + .cw-loading__sk { margin-top: 9px; }
+#cw-root .cw-loading__sk:nth-child(1) { width: 76%; }
+#cw-root .cw-loading__sk:nth-child(2) { width: 58%; }
+#cw-root .cw-loading__sk:nth-child(3) { width: 68%; }
+#cw-root .cw-loading__text {
+  display: block;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--cw-muted);
+}
+@keyframes cw-shimmer {
+  0%   { background-position: 100% 0; }
+  100% { background-position: 0 0; }
+}
+/* 尊重系统的"减少动态效果"：静态灰条，不闪 */
+@media (prefers-reduced-motion: reduce) {
+  #cw-root .cw-loading__sk { animation: none; }
+}
+
+/* ============================================================================
+   10. 收起态：右侧一列短横线（第 10 章）
+
+   ★ 核心设计：**收起 ≠ 隐藏**。
+     面板不消失、不加悬浮球，只是把宽度从 300px 收到 46px，
+     藏掉除"条目"以外的所有东西 —— 收起态和展开态用的是**同一批 .cw-item**。
+     好处有两个：
+       ① 展开时那些横线**不需要凭空出现**（它们一直都在），卡片像是围着这列横线
+          长出来的，动画天然连续；"隐藏 + 悬浮球"方案里，球和卡片是完全两组元素，
+          切换时视觉必然跳一下。
+       ② 收起态那一列横线，和展开态每行右侧那根"当前项指示线"是同一种图形 ——
+          用户第一次看到就懂"这是同一个东西的压缩形态"。
+   ============================================================================ */
+#cw-root.cw-collapsed .cw-panel {
+  width: var(--cw-rail-w, 46px);
+  /* ★ 2026-09-28：那一列**最多 9 根横线**，总高由 JS 算好写在 --cw-rail-h 里
+     （= 行高 × 9 + 上下内边距 16），这里只负责把它当家。
+     ⚠️ 为什么不能只限行高：条数一多，面板会被内容撑着长到 --cw-max-h，
+        于是**看得见 13 根而不是 9 根**（真机实测）。"最多 9 条"要同时约束
+        "每条多高"和"总共多高"。 */
+  max-height: var(--cw-rail-h, 412px);
+  min-height: 132px;                    /* 0 条时也不能缩成 0 高，否则扫不到 */
+  background: transparent;              /* 收起后不要那张磨砂卡片，只剩一列横线浮在页面上 */
+  border-color: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* 收起后这些都不需要了：标题栏、搜索框、空状态提示。
+   ⚠️ 注意这里**没有** .cw-list —— 它正是要留下的那一个。 */
+#cw-root.cw-collapsed .cw-header,
+#cw-root.cw-collapsed .cw-search-wrap,
+#cw-root.cw-collapsed .cw-backbar,
+#cw-root.cw-collapsed .cw-empty,
+#cw-root.cw-collapsed .cw-loading { display: none; }
+
+#cw-root.cw-collapsed .cw-list {
+  padding: 8px;
+  overflow: hidden;                     /* 收起态不滚动：条数多了靠行高压缩，见 updateRailGeometry */
+  scrollbar-width: none;
+}
+#cw-root.cw-collapsed .cw-list::-webkit-scrollbar { width: 0; height: 0; }
+
+/* 一行 = 一根横线。行高由 JS 算出来写进 --cw-rail-row（8~44px，限幅的原因见 sidebar.js）。 */
+#cw-root.cw-collapsed .cw-item {
+  height: var(--cw-rail-row, 18px);
+  padding: 0 9px 0 0;
+  border-radius: 0;
+  background: transparent;              /* 收起态不要 hover 底色 —— 只剩横线，底色会很脏 */
+}
+#cw-root.cw-collapsed .cw-item + .cw-item { margin-top: 0; }
+
+/* ★ 2026-09-28：收起态的当前项**只保留那根蓝横线，不要那个方框**。
+   展开态的当前项有一圈 `inset 0 0 0 1px` 的蓝色发光边框（第 7 章），
+   在 300px 宽的列表里它是"一张被点亮的小卡片"，看着是对的；
+   但收起后每个条目变成 46px 宽 × 40 多像素高的一格，同一圈边框**立刻变成了一个
+   空荡荡的方框** —— 用户的原话是"横线周围的边框去掉"。
+   判据：**一个视觉元素的含义会随尺寸改变；换形态时要重新问一遍"它现在像什么"。**
+   ⚠️ 蓝色横线本身**必须留着** —— 那是"你正在读这一条"的唯一信号，
+      去掉边框不等于去掉强调，只是换一种更轻的表达。 */
+#cw-root.cw-collapsed .cw-item.is-active {
+  background: transparent;
+  box-shadow: none;
+}
+#cw-root.cw-collapsed .cw-item__idx,
+#cw-root.cw-collapsed .cw-item__text { display: none; }
+
+/* 当前阅读那一根仍然是蓝的（继承展开态的规则）；其它横线悬停时加深一点 */
+#cw-root.cw-collapsed .cw-item:not(.is-active):hover .cw-item__mark {
+  background: var(--cw-muted);
+}
+
+/* ★ 第 11 章：收起态的子提问画「短细线」（决策 ①，2026-09-28 二改加强对比）。
+   主横线 14×2px，子线 6×1px + 降透明度 + **往里缩 3px** —— 右对齐的一列里，
+   "缩进"只能往左让；短 + 细 + 淡 + 缩四样叠加，主子一眼可分。
+   ⚠️ 收起态的总行数（主 + 子合计）仍受"最多 9 行"约束，见 updateRailGeometry。 */
+#cw-root.cw-collapsed .cw-item--child .cw-item__mark {
+  width: 6px;
+  height: 1px;
+  opacity: 0.5;
+  margin-right: 3px;
+}
+
+/* 还没有提问时的三根占位横线。
+   ⚠️ 它们不是装饰：收起态的主交互是"鼠标扫过这一列"，
+      一根都没有 = 扫不到任何东西 = 卡片彻底失联，用户只会以为"插件没了"。 */
+#cw-root .cw-rail-ghost { display: none; }
+#cw-root.cw-collapsed .cw-rail-ghost {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 12px 9px 4px 0;
+}
+#cw-root.cw-collapsed .cw-rail-ghost > span {
+  width: 12px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--cw-mark);
+  opacity: 0.65;                        /* 比真横线更淡：一眼能分出"这是占位不是条目" */
+}
+
+/* 悬停临时展开时，收起按钮的箭头翻个方向（"收起" ↔ "固定展开"），
+   让"现在点下去会发生什么"在图标上就能读出来。 */
+#cw-root .cw-btn[data-act="collapse"] svg { transition: transform 0.2s ease; }
+#cw-root.cw-reveal .cw-btn[data-act="collapse"] svg { transform: rotate(180deg); }
+
+/* ============================================================================
+   11. 悬停浮出全文（第 10 章）
+
+   ⚠️ 挂在 #cw-root 这一层，但**不在 .cw-panel 里面** —— 面板是 overflow: hidden，
+      气泡放里面会被裁掉半截。
+   ⚠️ 也正因为它要放在 #cw-root 下、且用 position: fixed，
+      所以 #cw-root 上**绝不能加 contain**（那会改掉 fixed 的定位基准，
+      气泡会算到屏幕外面去）—— 这条铁律在第 3 章就写下了，这里第一次真的用上。
+   ============================================================================ */
+#cw-root .cw-tip {
+  position: fixed;
+  z-index: 2147483001;                  /* 比面板高 1：气泡必须压在卡片上面 */
+  display: none;
+  max-width: 300px;
+  padding: 9px 11px;
+  border-radius: 10px;
+  background: rgba(24, 24, 27, 0.94);
+  color: #f4f4f5;
+  font-size: 12.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;                /* 提问里的换行要保留；同时允许长行自动折行 */
+  word-break: break-word;
+  box-shadow: 0 12px 28px -10px rgba(15, 23, 42, 0.5);
+  pointer-events: none;                 /* ★ 不抢鼠标：气泡一出现就挡在鼠标下，会立刻触发 mouseout → 闪烁 */
+}
+#cw-root .cw-tip.is-on { display: block; }
